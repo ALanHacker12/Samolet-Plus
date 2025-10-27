@@ -1,0 +1,57 @@
+import sqlite3
+
+
+def reset_both_queues():
+    conn = sqlite3.connect('real_estate.db')
+    cursor = conn.cursor()
+
+    print("🔄 СБРОС ОБЕИХ ОЧЕРЕДЕЙ")
+    print("=" * 40)
+
+    # Сбрасываем очередь для КАЖДОГО объекта отдельно
+    objects = [
+        (1, 'ЖК №1 Семейная Ипотека от 5,9%'),
+        (2, 'ЖК №2 Семейная Ипотека от 3,5%')
+    ]
+
+    for object_id, object_name in objects:
+        # Получаем всех агентов этого объекта
+        cursor.execute('''
+            SELECT id FROM agents 
+            WHERE object_id = ? 
+            ORDER BY id
+        ''', (object_id,))
+
+        agents = cursor.fetchall()
+
+        # Присваиваем порядок 1,2,3... для КАЖДОГО объекта отдельно
+        for order, agent in enumerate(agents, 1):
+            cursor.execute('UPDATE agents SET queue_order = ? WHERE id = ?', (order, agent[0]))
+
+        print(f"✅ {object_name}: очередь сброшена (1-{len(agents)})")
+
+    conn.commit()
+
+    # Показываем результат
+    print("\n📊 ТЕКУЩЕЕ СОСТОЯНИЕ ОЧЕРЕДЕЙ:")
+    print("=" * 40)
+
+    for object_id, object_name in objects:
+        cursor.execute('''
+            SELECT username, queue_order 
+            FROM agents 
+            WHERE object_id = ? 
+            ORDER BY queue_order
+        ''', (object_id,))
+
+        agents = cursor.fetchall()
+        print(f"\n🏢 {object_name}:")
+        for agent in agents:
+            print(f"   {agent[1]}. @{agent[0]}")
+
+    conn.close()
+    print("\n🎉 Обе очереди сброшены и готовы к работе!")
+
+
+if __name__ == "__main__":
+    reset_both_queues()

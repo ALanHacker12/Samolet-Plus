@@ -1,0 +1,110 @@
+# Ваш токен бота
+API_TOKEN = '8292585151:AAGXg5aM_UXR8czFuIjoRgIkkbrnERKDPbs'
+bot = telebot.TeleBot(API_TOKEN)
+
+# Подключаем базу данных
+conn = sqlite3.connect('real_estate.db', check_same_thread=False)
+cursor = conn.cursor()
+
+# Временное хранилище для пользователей
+user_data = {}
+
+
+# Команда /start
+@bot.message_handler(commands=['start'])
+def start(message):
+    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+    btn1 = types.KeyboardButton('ЖК №1 Семейная Ипотека от 5,9%')
+    btn2 = types.KeyboardButton('ЖК №2 Семейная Ипотека от 3,5%')
+    markup.add(btn1, btn2)
+
+    bot.send_message(message.chat.id, 'Выберите объект:', reply_markup=markup)
+
+
+# Обработка выбора объекта
+@bot.message_handler(func=lambda message: True)
+def handle_message(message):
+    user_id = message.from_user.id
+
+    if message.text in ['ЖК №1 Семейная Ипотека от 5,9%', 'ЖК №2 Семейная Ипотека от 3,5%']:
+        # Сохраняем выбор объекта
+        object_name = message.text
+        object_id = 1 if object_name == 'ЖК №1 Семейная Ипотека от 5,9%' else 2
+        user_data[user_id] = {'object_id': object_id, 'object_name': object_name}
+
+        # Показываем кнопку для получения контакта
+        markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
+        contact_btn = types.KeyboardButton('📞 Получить контакт агента')
+        markup.add(contact_btn)
+
+        bot.send_message(message.chat.id,
+                         f'Вы выбрали: {object_name}.\nНажмите кнопку для связи с агентом.',
+                         reply_markup=markup)
+
+    elif message.text == '📞 Получить контакт агента':
+        if user_id in user_data:
+            object_id = user_data[user_id]['object_id']
+            object_name = user_data[user_id]['object_name']
+
+            print(f"🔍 Ищем агента для объекта {object_name} (ID: {object_id})")
+
+            # ШАГ 1: Находим первого агента в очереди для ЭТОГО КОНКРЕТНОГО объекта
+            cursor.execute('''
+                SELECT id, username, queue_order 
+                FROM agents 
+                WHERE object_id = ? 
+                ORDER BY queue_order 
+                LIMIT 1
+            ''', (object_id,))
+
+            agent = cursor.fetchone()
+
+            if agent:
+                agent_id, agent_username, current_order = agent
+                print(f"✅ Найден агент: {agent_username} (порядок: {current_order}) для {object_name}")
+
+                # Отдаем контакт пользователю
+                bot.send_message(message.chat.id,
+                                 f'🏢 {object_name}\n🤝 Свяжитесь с агентом: @{agent_username}\n\nОн поможет вам с выбором квартиры!',
+                                 reply_markup=types.ReplyKeyboardRemove())
+
+                # ШАГ 2: Находим МАКСИМАЛЬНЫЙ порядковый номер в очереди ДЛЯ ЭТОГО ОБЪЕКТА
+                cursor.execute('SELECT MAX(queue_order) FROM agents WHERE object_id = ?', (object_id,))
+                max_order_result = cursor.fetchone()
+                max_order = max_order_result[0] if max_order_result[0] else 0
+
+                print(f"📊 Максимальный порядок в очереди для {object_name}: {max_order}")
+
+                # ШАГ 3: Перемещаем агента в КОНЕЦ очереди ЭТОГО ОБЪЕКТА
+                new_order = max_order + 1
+                cursor.execute('UPDATE agents SET queue_order = ? WHERE id = ?', (new_order, agent_id))
+                conn.commit()
+
+                print(f"🔄 Агент {agent_username} перемещен с {current_order} на {new_order} в {object_name}")
+
+                # Показываем текущее состояние очереди (для отладки)
+                cursor.execute('''
+                    SELECT username, queue_order 
+                    FROM agents 
+                    WHERE object_id = ? 
+                    ORDER BY queue_order
+                ''', (object_id,))
+
+                agents_list = cursor.fetchall()
+                queue_info = f"Очередь {object_name}:\n" + "\n".join(
+                    [f"{i + 1}. @{agent[0]}" for i, agent in enumerate(agents_list)])
+                print(queue_info)
+
+            else:
+                bot.send_message(message.chat.id,
+                                 f'😔 Для объекта {object_name} пока нет агентов.\nОбратитесь к администратору.',
+                                 reply_markup=types.ReplyKeyboardRemove())
+
+            # Очищаем временные данные пользователя
+            del user_data[user_id]
+        else:
+            bot.send_message(message.chat.id, 'Пожалуйста, сначала выберите объект.')
+
+
+print("🟢 Бот запущен с независимыми очередями...")
+bot.polling()

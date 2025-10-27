@@ -1,0 +1,96 @@
+import sqlite3
+
+
+def setup_database():
+    conn = sqlite3.connect('real_estate.db')
+    cursor = conn.cursor()
+
+    print("🔄 НАСТРОЙКА БАЗЫ ДАННЫХ С НЕЗАВИСИМЫМИ ОЧЕРЕДЯМИ")
+    print("=" * 50)
+
+    # Создаем таблицы
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS objects (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS agents (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT NOT NULL,
+            object_id INTEGER,
+            queue_order INTEGER
+        )
+    ''')
+
+    # Очищаем старые данные
+    cursor.execute("DELETE FROM objects")
+    cursor.execute("DELETE FROM agents")
+
+    # Добавляем объекты
+    objects_data = [
+        (1, 'ЖК №1 Семейная Ипотека от 5,9% '),
+        (2, 'ЖК №2 Семейная Ипотека от 3,5% ')
+    ]
+
+    for obj in objects_data:
+        cursor.execute('INSERT INTO objects (id, name) VALUES (?, ?)', obj)
+    print("✅ Добавлены объекты недвижимости")
+
+    # Добавляем агентов с НЕЗАВИСИМЫМИ очередями для каждого объекта
+    agents_data = [
+        # ЖК Ромашка - своя очередь (начинается с 1)
+        (1, '@SamoletPlus113', 1, 1),
+        (2, '@qwils', 1, 2),
+        (3, '+7 963 891 5555', 1, 3),
+
+        # ЖК Огонек - СВОЯ ОЧЕРЕДЬ (тоже начинается с 1)
+        (4, '@qwils', 2, 1),
+        (5, '@SamoletPlus113', 2, 2),
+        (6, '7 963 891 5555', 2, 3)
+    ]
+
+    for agent in agents_data:
+        cursor.execute('INSERT INTO agents (id, username, object_id, queue_order) VALUES (?, ?, ?, ?)', agent)
+    print("✅ Добавлены агенты с независимыми очередями")
+
+    conn.commit()
+
+    # Показываем результат
+    print("\n📊 НАСТРОЕННЫЕ ОЧЕРЕДИ:")
+    print("=" * 40)
+
+    # Для ЖК Ромашка
+    cursor.execute('''
+        SELECT o.name, a.username, a.queue_order 
+        FROM agents a 
+        JOIN objects o ON a.object_id = o.id 
+        WHERE o.id = 1
+        ORDER BY a.queue_order
+    ''')
+
+    print("🏢 ЖК №1 Семейная Ипотека от 5,9% ")
+    for row in cursor.fetchall():
+        print(f"   {row[2]}. @{row[1]}")
+
+    # Для ЖК Огонек
+    cursor.execute('''
+        SELECT o.name, a.username, a.queue_order 
+        FROM agents a 
+        JOIN objects o ON a.object_id = o.id 
+        WHERE o.id = 2
+        ORDER BY a.queue_order
+    ''')
+
+    print("\n🏢 'ЖК №2 Семейная Ипотека от 3,5% ")
+    for row in cursor.fetchall():
+        print(f"   {row[2]}. @{row[1]}")
+
+    conn.close()
+    print("\n🎉 База настроена! Очереди работают независимо!")
+
+
+if __name__ == "__main__":
+    setup_database()
